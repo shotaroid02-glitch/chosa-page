@@ -6,50 +6,62 @@
 <meta name="theme-color" content="#1F5FA8">
 <meta name="robots" content="noindex,nofollow">
 <title>調査</title>
-<style>
-html,body{margin:0;height:100%;background:#F3F5F8;font:16px -apple-system,"Hiragino Sans",sans-serif;color:#555}
-iframe{position:fixed;inset:0;border:0;width:100%;height:100%;display:block}
-#msg{padding:24px;line-height:1.7}
-#msg a{display:inline-block;margin-top:12px;padding:12px 18px;border-radius:12px;background:#1F5FA8;color:#fff;text-decoration:none;font-weight:700}
-#help{position:fixed;left:0;right:0;bottom:0;z-index:5;background:#fff;border-top:1px solid #ddd;padding:10px 14px calc(10px + env(safe-area-inset-bottom));font-size:14px;text-align:center}
-#help a{color:#1F5FA8;font-weight:700}
+<style id="bootcss">
+html,body{margin:0;background:#F3F5F8;font:16px -apple-system,"Hiragino Sans",sans-serif;color:#555}
+#boot{padding:28px 20px;line-height:1.7}
+#boot .bar{height:6px;background:#dde2e8;border-radius:3px;overflow:hidden;margin:12px 0}
+#boot .bar i{display:block;height:100%;width:30%;background:#1F5FA8;animation:mv 1.2s infinite ease-in-out}
+@keyframes mv{0%{margin-left:-30%}100%{margin-left:100%}}
+#boot button{font:inherit;padding:12px 18px;border-radius:12px;border:0;background:#1F5FA8;color:#fff;font-weight:700}
 </style></head>
 <body>
-<div id="msg">開いています…</div>
+<div id="boot"><b>調査のページを開いています…</b><div class="bar"><i></i></div><div id="st"></div></div>
 <script>
-// 枠だけのページ。中身（調査のページ）は Google のウェブアプリ。ウェブアプリの番号はこのページに書かず、
-// 案件フォルダのリンクの # のうしろで渡す（# のうしろはサーバーに送られない）。
-// 直接開くと上に出る Google の帯は、枠の中に入れると出ない。
-// ただし iPad の Safari などは枠の中の Google のページを止めて空白になることがある（2026-11-07）。
-// 中のページが「開けた」と知らせてこなければ、ウェブアプリを直接開き直す（帯は出るが使える）。その端末は次から直接開く。
+/* 調査のページ（公開の置き場は GitHub Pages。中身は Google のウェブアプリから毎回受け取る）。
+   2026-11-07 本人「上の帯邪魔」「帯出てほしくない」。Google の画面を直接開くと帯が出て、枠に入れると iPad の Safari が止める。
+   そこでこのページ自身が表示する。中身（案件の情報）はこのページに置かず、開くたびにウェブアプリから文字で受け取る。
+   ドライブの操作（写真・答えの送信）もウェブアプリに直接送る（cookie を使わないので Safari でも止まらない）。
+   ウェブアプリの番号は案件フォルダのリンクの # のうしろで渡す（サーバーに送られない。端末にも覚える）。 */
 (function(){
+  var st = document.getElementById('st');
   var h = new URLSearchParams(location.hash.slice(1));
   var d = (h.get('d') || '').replace(/[^0-9A-Za-z_-]/g, '');
   var no = (h.get('no') || '').replace(/[^0-9A-Za-z_-]/g, '');
   try { if (d) localStorage.setItem('chosa-d', d); else d = localStorage.getItem('chosa-d') || ''; } catch(e) {}
-  var msg = document.getElementById('msg');
-  if (!d) { msg.textContent = '案件フォルダの「調査のページを開く」から開いてください。'; return; }
-  var url = 'https://script.google.com/macros/s/' + d + '/exec' + (no ? '?no=' + encodeURIComponent(no) : '');
-  var direct = false;
-  try { direct = localStorage.getItem('chosa-direct') === '1'; } catch(e) {}
-  if (direct) { location.replace(url); return; }
-  var ready = false;
-  window.addEventListener('message', function(ev){
-    if (ev && ev.data && ev.data.chosa === 'ready') { ready = true; var hp = document.getElementById('help'); if (hp) hp.remove(); }
+  if (!d) { document.getElementById('boot').innerHTML = '<b>案件フォルダの「調査のページを開く」から開いてください。</b>'; return; }
+  var API = 'https://script.google.com/macros/s/' + d + '/exec';
+
+  // ページの中の「ドライブに送る」の呼び方（claude.use('mcp').callTool）を、ウェブアプリへの送信で受ける
+  function call(tool, input){
+    return fetch(API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ tool: tool, input: input || {} }), redirect: 'follow' })
+      .then(function(r){ if (!r.ok) throw new Error('通信の失敗（' + r.status + '）'); return r.json(); })
+      .then(function(j){ if (!j.ok) { var e = new Error(j.error || '失敗'); e.code = 'tool_error'; throw e; } return { payload: j.payload }; });
+  }
+  var mcp = { callTool: function(server, tool, input){ return call(tool, input); } };
+  window.claude = { use: function(name){ return Promise.resolve(name === 'mcp' ? mcp : null); } };
+  window.SANYU_GAS = true; window.YOUSHI_NO = no; window.YOUSHI_GAS = true;
+  window.addEventListener('error', function(ev){
+    try { var p = document.createElement('pre'); p.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:99999;background:#fff;color:#c00;font:12px monospace;white-space:pre-wrap;margin:0;padding:6px;max-height:40vh;overflow:auto';
+      p.textContent = 'エラー（土肥に画面を送ってください）: ' + ev.message + ' 行' + ev.lineno + ':' + ev.colno; document.body.appendChild(p); } catch(e) {}
   });
-  var f = document.createElement('iframe');
-  f.src = url;
-  f.allow = 'camera; geolocation; clipboard-write';
-  document.body.appendChild(f);
-  var hp = document.createElement('div'); hp.id = 'help';
-  hp.innerHTML = '表示されないときは <a href="' + url + '">こちらから直接開く</a>';
-  hp.querySelector('a').addEventListener('click', function(){ try { localStorage.setItem('chosa-direct', '1'); } catch(e) {} });
-  setTimeout(function(){ if (!ready) document.body.appendChild(hp); }, 4000);
-  setTimeout(function(){
-    if (ready) return;
-    try { localStorage.setItem('chosa-direct', '1'); } catch(e) {}
-    location.replace(url);
-  }, 12000);
+
+  function show(html){
+    var doc = new DOMParser().parseFromString(html, 'text/html');
+    var t = doc.querySelector('title'); if (t && t.textContent) document.title = t.textContent;
+    doc.querySelectorAll('style, link[rel=stylesheet]').forEach(function(n){ document.head.appendChild(n.cloneNode(true)); });
+    var scripts = Array.prototype.slice.call(doc.querySelectorAll('script')); scripts.forEach(function(x){ x.remove(); });
+    var bc = document.getElementById('bootcss'); if (bc) bc.remove();
+    document.body.innerHTML = doc.body.innerHTML;
+    scripts.forEach(function(x){ var el = document.createElement('script'); for (var i = 0; i < x.attributes.length; i++) el.setAttribute(x.attributes[i].name, x.attributes[i].value); el.textContent = x.textContent; document.body.appendChild(el); });
+  }
+  function fail(e){
+    document.getElementById('boot').innerHTML = '<b>開けませんでした</b><p>' + String((e && e.message) || e) + '</p><p>電波を確かめて、もう一度開いてください。</p><button onclick="location.reload()">もう一度</button>';
+  }
+  st.textContent = '中身を受け取っています（電波が弱いと数十秒かかります）';
+  fetch(API + '?api=page&p=app', { redirect: 'follow' })
+    .then(function(r){ if (!r.ok) throw new Error('通信の失敗（' + r.status + '）'); return r.text(); })
+    .then(function(html){ if (html.indexOf('<') < 0 || html.length < 1000) throw new Error('中身が受け取れませんでした'); show(html); })
+    .catch(fail);
 })();
 </script>
 </body></html>
